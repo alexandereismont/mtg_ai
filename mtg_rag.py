@@ -3,9 +3,9 @@ MTG Rules RAG System
 ====================
 Retrieval-Augmented Generation for Magic: The Gathering Comprehensive Rules.
 
-Uses TF-IDF for fast local retrieval and a local GPT4All model (Phi-3-mini)
-for natural-language answers with cited rule numbers. Fully offline after
-the one-time model download (~2.4 GB).
+Uses TF-IDF for fast local retrieval and a local Ollama model for
+natural-language answers with cited rule numbers. Requires Ollama running
+locally (`brew install ollama && ollama pull llama3.2`).
 
 Usage:
     python mtg_rag.py setup              # One-time: build TF-IDF index from mtg_rules.txt
@@ -14,7 +14,7 @@ Usage:
 
 Requirements:
     pip install -r requirements.txt
-    # No API key needed — model runs locally via gpt4all
+    # No API key needed — model runs locally via Ollama
 """
 
 import os
@@ -27,7 +27,7 @@ INDEX_FILE = "mtg_index.pkl"
 TOP_K = 6
 MIN_CHUNK_CHARS = 80
 
-LOCAL_MODEL = "Phi-3-mini-4k-instruct.Q4_0.gguf"
+OLLAMA_MODEL = "llama3.2"
 
 SYSTEM_PROMPT = (
     "You are an expert Magic: The Gathering rules judge. "
@@ -151,7 +151,7 @@ def retrieve(question: str, index: dict, top_k: int = TOP_K) -> list[dict]:
 
 def query(question: str) -> str:
     """Retrieve relevant rule chunks and generate an answer with the local LLM."""
-    from gpt4all import GPT4All
+    import ollama
 
     index = load_index()
     hits = retrieve(question, index)
@@ -168,9 +168,14 @@ def query(question: str) -> str:
         "Answer based on the rules above, citing rule numbers."
     )
 
-    model = GPT4All(LOCAL_MODEL)
-    with model.chat_session(system_prompt=SYSTEM_PROMPT):
-        return model.generate(prompt, max_tokens=512)
+    response = ollama.chat(
+        model=OLLAMA_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    return response["message"]["content"]
 
 
 # ---------------------------------------------------------------------------
