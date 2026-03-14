@@ -3,8 +3,9 @@ MTG Rules RAG System
 ====================
 Retrieval-Augmented Generation for Magic: The Gathering Comprehensive Rules.
 
-Uses TF-IDF for fast local retrieval (no model downloads needed) and the
-Claude API for natural-language answers with cited rule numbers.
+Uses TF-IDF for fast local retrieval and a local GPT4All model (Phi-3-mini)
+for natural-language answers with cited rule numbers. Fully offline after
+the one-time model download (~2.4 GB).
 
 Usage:
     python mtg_rag.py setup              # One-time: build TF-IDF index from mtg_rules.txt
@@ -13,7 +14,7 @@ Usage:
 
 Requirements:
     pip install -r requirements.txt
-    export ANTHROPIC_API_KEY="sk-ant-..."
+    # No API key needed — model runs locally via gpt4all
 """
 
 import os
@@ -25,6 +26,15 @@ RULES_FILE = "mtg_rules.txt"
 INDEX_FILE = "mtg_index.pkl"
 TOP_K = 6
 MIN_CHUNK_CHARS = 80
+
+LOCAL_MODEL = "Phi-3-mini-4k-instruct.Q4_0.gguf"
+
+SYSTEM_PROMPT = (
+    "You are an expert Magic: The Gathering rules judge. "
+    "Answer the player's question using ONLY the rules provided below. "
+    "Cite the specific rule numbers (e.g. 702.7b) that support your answer. "
+    "Be concise and precise."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -140,15 +150,27 @@ def retrieve(question: str, index: dict, top_k: int = TOP_K) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def query(question: str) -> str:
-    """Retrieve and return the most relevant rule chunks for the question."""
+    """Retrieve relevant rule chunks and generate an answer with the local LLM."""
+    from gpt4all import GPT4All
+
     index = load_index()
     hits = retrieve(question, index)
 
     if not hits:
-        return "No closely matching rules found."
+        context = "(No closely matching rules found.)"
+    else:
+        parts = [f"[Rule {c['id']}]\n{c['text']}" for c in hits]
+        context = "\n\n---\n\n".join(parts)
 
-    parts = [f"Rule {c['id']}\n{c['text']}" for c in hits]
-    return "\n\n" + ("\n\n---\n\n".join(parts))
+    prompt = (
+        f"Relevant Rules:\n\n{context}\n\n"
+        f"---\n\nQuestion: {question}\n\n"
+        "Answer based on the rules above, citing rule numbers."
+    )
+
+    model = GPT4All(LOCAL_MODEL)
+    with model.chat_session(system_prompt=SYSTEM_PROMPT):
+        return model.generate(prompt, max_tokens=512)
 
 
 # ---------------------------------------------------------------------------
