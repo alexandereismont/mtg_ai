@@ -115,10 +115,10 @@ def setup():
 
 
 def load_index():
-    """Load the persisted index. Exits with a helpful message if not built yet."""
+    """Load the persisted index. Raises RuntimeError if not built yet."""
     if not os.path.exists(INDEX_FILE):
-        sys.exit(
-            f"[error] Index file '{INDEX_FILE}' not found. Run setup first:\n"
+        raise RuntimeError(
+            f"Index file '{INDEX_FILE}' not found. Run setup first:\n"
             "  python mtg_rag.py setup"
         )
     with open(INDEX_FILE, "rb") as f:
@@ -195,9 +195,18 @@ def main():
             sys.exit(1)
         question = " ".join(args[1:])
         print(f"\nQuestion: {question}\n")
-        answer = query(question)
+        try:
+            answer = query(question)
+        except RuntimeError as e:
+            sys.exit(f"[error] {e}")
         print(f"Answer:\n{answer}\n")
         return
+
+    # Wrap load_index errors as friendly CLI messages
+    try:
+        load_index()  # validate index exists before entering interactive mode
+    except RuntimeError as e:
+        sys.exit(f"[error] {e}")
 
     # Interactive mode
     print("MTG Rules Q&A  (type 'quit' to exit)")
