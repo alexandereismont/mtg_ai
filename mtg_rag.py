@@ -23,7 +23,6 @@ import pickle
 
 RULES_FILE = "mtg_rules.txt"
 INDEX_FILE = "mtg_index.pkl"
-CLAUDE_MODEL = "claude-sonnet-4-6"
 TOP_K = 6
 MIN_CHUNK_CHARS = 80
 
@@ -140,47 +139,16 @@ def retrieve(question: str, index: dict, top_k: int = TOP_K) -> list[dict]:
 # Query pipeline
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """\
-You are an expert Magic: The Gathering rules judge with deep knowledge of the \
-Comprehensive Rules. Answer the player's question using the rules excerpts \
-provided below. Always cite the specific rule numbers (e.g. 702.7b) that \
-support your answer. Be concise and precise."""
-
-
 def query(question: str) -> str:
-    """Retrieve relevant rules and ask Claude to answer the question."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        sys.exit(
-            "[error] ANTHROPIC_API_KEY environment variable is not set.\n"
-            "  export ANTHROPIC_API_KEY='sk-ant-...'"
-        )
-
+    """Retrieve and return the most relevant rule chunks for the question."""
     index = load_index()
     hits = retrieve(question, index)
 
     if not hits:
-        context = "(No closely matching rules found — answering from general knowledge.)"
-    else:
-        parts = [f"[Rule {c['id']}]\n{c['text']}" for c in hits]
-        context = "\n\n---\n\n".join(parts)
+        return "No closely matching rules found."
 
-    prompt = (
-        f"Relevant Rules:\n\n{context}\n\n"
-        f"---\n\nQuestion: {question}\n\n"
-        "Please answer based on the rules above, citing rule numbers."
-    )
-
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
-    response = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    return response.content[0].text
+    parts = [f"Rule {c['id']}\n{c['text']}" for c in hits]
+    return "\n\n" + ("\n\n---\n\n".join(parts))
 
 
 # ---------------------------------------------------------------------------
